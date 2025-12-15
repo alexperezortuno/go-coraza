@@ -17,6 +17,7 @@ WORKDIR /app
 COPY --from=builder /coraza-proxy /app/coraza-proxy
 COPY --from=builder /src/coreruleset /app/coreruleset
 COPY --from=builder /src/profiles /app/profiles
+COPY --from=builder /src/coreruleset/crs-setup.conf.example /app/profiles/crs-setup.conf
 
 RUN mkdir -p /var/log/coraza && touch /var/log/coraza/audit.log
 
