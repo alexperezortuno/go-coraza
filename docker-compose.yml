@@ -10,13 +10,13 @@ services:
     environment:
       BACKENDS: |
         {
-          "waf.test.local": ["localhost:8082"],
-          "api.test.local": ["localhost:8083"],
+          "waf.test.local": ["web:80"],
+          "api.test.local": ["api:8082"],
           "default": ["localhost:8080"]
         }
       CORAZA_RULES_PATH_APIS: >
-        /app/coraza.conf:
-        /app/coreruleset/pl2-crs-setup.conf:
+        /app/profiles/coraza.conf:
+        /app/profiles/pl2-crs-setup.conf:
         /app/coreruleset/rules/REQUEST-901-INITIALIZATION.conf:
         /app/coreruleset/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf:
         /app/coreruleset/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf:
@@ -24,14 +24,28 @@ services:
         /app/coreruleset/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf:
         /app/coreruleset/rules/REQUEST-949-BLOCKING-EVALUATION.conf
       CORAZA_RULES_PATH_SITES: >
-        /app/coraza.conf:
-        /app/coreruleset/pl1-crs-setup.conf:
+        /app/profiles/coraza.conf:
+        /app/profiles/pl1-crs-setup.conf:
         /app/coreruleset/rules/*.conf"
       WAF_APIS_HOSTS: "api.test.local"
       WAF_WEB_HOSTS: "waf.test.local"
     networks:
-      - default
+      - coraza
+  api:
+    build: ./docker/api
+    container_name: test_api
+    depends_on:
+      - wafsec
+    networks:
+      - coraza
+  web:
+    build: ./docker/web
+    container_name: test_web
+    depends_on:
+      - wafsec
+    networks:
+      - coraza
 
 networks:
-  default:
+  coraza:
     external: true

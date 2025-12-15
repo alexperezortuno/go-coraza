@@ -150,7 +150,12 @@ func main() {
 
 		tx := waf.NewTransaction()
 		defer tx.ProcessLogging()
-		defer tx.Close()
+		defer func(tx ctypes.Transaction) {
+			err := tx.Close()
+			if err != nil {
+				log.Println("Error closing WAF transaction:", err)
+			}
+		}(tx)
 
 		// Connection
 		clientIP, clientPort := splitHostPort(r.RemoteAddr)
@@ -168,7 +173,11 @@ func main() {
 		if it := tx.ProcessRequestHeaders(); it != nil {
 			if block, status := shouldBlock(it); block {
 				w.WriteHeader(status)
-				w.Write([]byte("Request blocked by WAF (headers)"))
+				_, err := w.Write([]byte("Request blocked by WAF (headers)"))
+				if err != nil {
+					log.Println("Error writing response:", err)
+					return
+				}
 				return
 			}
 		}
@@ -180,7 +189,10 @@ func main() {
 				http.Error(w, "Error reading body", 400)
 				return
 			}
-			r.Body.Close()
+			err = r.Body.Close()
+			if err != nil {
+				return
+			}
 
 			_, _, err = tx.WriteRequestBody(body)
 			if err != nil {
@@ -190,7 +202,10 @@ func main() {
 
 			if it, _ := tx.ProcessRequestBody(); it != nil {
 				w.WriteHeader(it.Status)
-				w.Write([]byte("Request blocked by WAF (body)"))
+				_, err := w.Write([]byte("Request blocked by WAF (body)"))
+				if err != nil {
+					return
+				}
 				return
 			}
 
@@ -217,7 +232,12 @@ func main() {
 			http.Error(w, "Bad Gateway: "+err.Error(), 502)
 			return
 		}
-		defer resp.Body.Close()
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				log.Println("Error closing backend response body:", err)
+			}
+		}(resp.Body)
 
 		for k, v := range resp.Header {
 			for _, vv := range v {
@@ -229,13 +249,19 @@ func main() {
 		if it := tx.ProcessResponseHeaders(resp.StatusCode, resp.Proto); it != nil {
 			if block, status := shouldBlock(it); block {
 				w.WriteHeader(status)
-				w.Write([]byte("Response blocked by WAF"))
+				_, err := w.Write([]byte("Response blocked by WAF"))
+				if err != nil {
+					return
+				}
 				return
 			}
 		}
 
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		_, err = io.Copy(w, resp.Body)
+		if err != nil {
+			return
+		}
 	})
 
 	port := ":" + getPort()
