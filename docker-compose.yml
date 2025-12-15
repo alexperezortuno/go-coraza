@@ -25,7 +25,7 @@ services:
         /app/coreruleset/rules/REQUEST-949-BLOCKING-EVALUATION.conf
       CORAZA_RULES_PATH_SITES: >
         /app/profiles/coraza.conf:
-        /app/profiles/pl1-crs-setup.conf:
+        /app/profiles/crs-setup.conf:
         /app/coreruleset/rules/*.conf"
       WAF_APIS_HOSTS: "api.test.local"
       WAF_WEB_HOSTS: "waf.test.local"
