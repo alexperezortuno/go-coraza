@@ -1,0 +1,37 @@
+services:
+  wafsec:
+    image: wafsec:local
+    container_name: wafsec
+    restart: always
+    volumes:
+      - ./modsecurity/logs/:/tmp/
+    ports:
+      - "8081:8081"
+    environment:
+      BACKENDS: |
+        {
+          "waf.test.local": ["localhost:8082"],
+          "api.test.local": ["localhost:8083"],
+          "default": ["localhost:8080"]
+        }
+      CORAZA_RULES_PATH_APIS: >
+        /app/coraza.conf:
+        /app/coreruleset/pl2-crs-setup.conf:
+        /app/coreruleset/rules/REQUEST-901-INITIALIZATION.conf:
+        /app/coreruleset/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf:
+        /app/coreruleset/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf:
+        /app/coreruleset/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf:
+        /app/coreruleset/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf:
+        /app/coreruleset/rules/REQUEST-949-BLOCKING-EVALUATION.conf
+      CORAZA_RULES_PATH_SITES: >
+        /app/coraza.conf:
+        /app/coreruleset/pl1-crs-setup.conf:
+        /app/coreruleset/rules/*.conf"
+      WAF_APIS_HOSTS: "api.test.local"
+      WAF_WEB_HOSTS: "waf.test.local"
+    networks:
+      - default
+
+networks:
+  default:
+    external: true
