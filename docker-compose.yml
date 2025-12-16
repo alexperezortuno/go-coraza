@@ -15,7 +15,7 @@ services:
           "default": ["localhost:8080"]
         }
       CORAZA_RULES_PATH_APIS: >
-        /app/profiles/coraza.conf:
+        /app/profiles/coraza-recommended.conf:
         /app/profiles/pl2-crs-setup.conf:
         /app/coreruleset/rules/REQUEST-901-INITIALIZATION.conf:
         /app/coreruleset/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf:
@@ -24,9 +24,10 @@ services:
         /app/coreruleset/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf:
         /app/coreruleset/rules/REQUEST-949-BLOCKING-EVALUATION.conf
       CORAZA_RULES_PATH_SITES: >
-        /app/profiles/coraza.conf:
-        /app/profiles/crs-setup.conf:
-        /app/coreruleset/rules/*.conf"
+        /app/profiles/coraza-recommended.conf:
+        /app/profiles/django-crs-setup.conf:
+        /app/coreruleset/rules/*.conf:
+        /app/profiles/django-exclusions.conf
       WAF_APIS_HOSTS: "api.test.local"
       WAF_WEB_HOSTS: "waf.test.local"
     networks:
