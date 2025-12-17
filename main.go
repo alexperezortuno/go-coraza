@@ -98,8 +98,26 @@ func loadWAF(paths string) (coraza.WAF, error) {
 	return coraza.NewWAF(cfg)
 }
 
-func main() {
+func start() {
+	// Create directories
+	err := os.MkdirAll("/tmp/log/coraza", 0755)
+	if err != nil {
+		return
+	}
+	// Create empty files
+	_, err = os.Create("/tmp/log/coraza/audit.log")
+	if err != nil {
+		return
+	}
 
+	_, err = os.Create("/tmp/log/coraza/debug.log")
+	if err != nil {
+		return
+	}
+}
+
+func main() {
+	start()
 	// ------------ REGLAS PARA SITIOS (PL1) ------------
 	rulesSites := os.Getenv("CORAZA_RULES_PATH_SITES")
 	if rulesSites == "" {

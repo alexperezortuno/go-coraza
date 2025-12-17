@@ -9,6 +9,14 @@ docker build --no-cache -t wafsec:local .
 Add `127.0.0.1 waf.test.local` to `/etc/hosts`
 Add `127.0.0.1 api.test.local` to `/etc/hosts`
 
+### Dependencies
+
+- [coraza-waf](https://github.com/corazawaf/coraza)
+
+```bash
+git clone --depth 1 https://github.com/coreruleset/coreruleset
+```
+
 ### Testing
 
 #### Log4Shell
