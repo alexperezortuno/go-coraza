@@ -33,3 +33,5 @@ go.work.sum
 crs/*
 go.sum
 dist
+*.log
+letsencrypt
