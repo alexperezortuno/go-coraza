@@ -21,7 +21,7 @@ services:
   wafsec:
     image: wafsec:local
     container_name: wafsec_coraza
-    restart: always
+    restart: on-failure:5
     depends_on:
       - traefik
     volumes:
@@ -36,7 +36,7 @@ services:
           "default": ["web:80"]
         }
       CORAZA_RULES_PATH_APIS: >
-        /app/profiles/coraza-recommended.conf:
+        /app/profiles/coraza.conf:
         /app/profiles/pl2-crs-setup.conf:
         /app/coreruleset/rules/REQUEST-901-INITIALIZATION.conf:
         /app/coreruleset/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf:
@@ -45,9 +45,19 @@ services:
         /app/coreruleset/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf:
         /app/coreruleset/rules/REQUEST-949-BLOCKING-EVALUATION.conf
       CORAZA_RULES_PATH_SITES: >
-        /app/profiles/coraza-recommended.conf:
+        /app/profiles/coraza.conf:
         /app/profiles/pl1-crs-setup.conf:
-        /app/coreruleset/rules/*.conf:
+        /app/coreruleset/rules/REQUEST-901-INITIALIZATION.conf:
+        /app/coreruleset/rules/REQUEST-905-COMMON-EXCEPTIONS.conf:
+        /app/coreruleset/rules/REQUEST-911-METHOD-ENFORCEMENT.conf:
+        /app/coreruleset/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf:
+        /app/coreruleset/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf:
+        /app/coreruleset/rules/REQUEST-931-APPLICATION-ATTACK-RFI.conf:
+        /app/coreruleset/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf:
+        /app/coreruleset/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf:
+        /app/coreruleset/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf:
+        /app/coreruleset/rules/REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf:
+        /app/coreruleset/rules/RESPONSE-955-WEB-SHELLS.conf
       WAF_APIS_HOSTS: "api.test.local"
       WAF_WEB_HOSTS: "waf.test.local"
     labels:

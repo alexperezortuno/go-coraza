@@ -22,7 +22,7 @@ git clone --depth 1 https://github.com/coreruleset/coreruleset
 #### Log4Shell
 
 ```bash
-curl --request POST "http://waf.test.local/" \
+curl --request POST "http://waf.test.local:8081" \
      -H "Host: waf.test.local" \
      -H "x-crs-paranoia-level: 4" \
      -H "x-format-output: txt-matched-rules" \
@@ -59,7 +59,7 @@ curl --location --request GET "http://waf.test.local:8081/" \
 ### XSS clásico
 
 ```bash
-curl --location --request GET "http://waf.test.local/" \
+curl --location --request GET "http://waf.test.local:8081/" \
   --header 'Host: waf.test.local' \
   --data-urlencode "x=<script>alert(1)</script>"
 ```
@@ -75,7 +75,7 @@ curl --location --request GET "http://waf.test.local:8081/" \
 ### LFI — Local File Inclusion
 
 ```bash
-curl --location --request GET "http://waf.test.local/" \
+curl --location --request GET "http://waf.test.local:8081/" \
   --header 'Host: waf.test.local' \
   --data-urlencode "file=../../etc/passwd"
 ```
@@ -83,7 +83,7 @@ curl --location --request GET "http://waf.test.local/" \
 ### RCE — Remote Command Injection
 
 ```bash
-curl --location --request GET "http://waf.test.local/" \
+curl --location --request GET "http://waf.test.local:8081/" \
   --header 'Host: waf.test.local' \
   --data-urlencode "cmd=;ls -la"
 ```
@@ -104,7 +104,7 @@ printf "GET / HTTP/1.1\r\nHost: waf.test.local\r\nTransfer-Encoding: chunked\r\n
 ### Request con UTF-8 inválido (CRS debería bloquearlo)
 
 ```bash
-curl --location --request GET "http://waf.test.local/" \
+curl --location --request GET "http://waf.test.local:8081/" \
   --header 'Host: waf.test.local' \
   --data-urlencode "q=%C0"
 ```
@@ -126,7 +126,7 @@ curl --location --request GET "http://waf.test.local:8081/" \
 ### A3 — Exposición de datos (API con JSON malicioso)
 
 ```bash
-curl -v -X POST "http://waf.test.local" \
+curl -v -X POST "http://waf.test.local:8081" \
   -H "Content-Type: application/json" \
   -d '{"name":"<script>alert(1)</script>"}'
 ```
@@ -134,6 +134,6 @@ curl -v -X POST "http://waf.test.local" \
 ### A6 — Misconfiguration Attack
 
 ```bash
-curl -v -X POST "http://waf.test.local" \
-  -H "X-Api-Version: <script>" "http://waf.test.local"
+curl -v -X POST "http://waf.test.local:8081" \
+  -H "X-Api-Version: <script>" "http://waf.test.local:8081"
 ```
