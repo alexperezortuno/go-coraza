@@ -1,0 +1,88 @@
+services:
+  traefik:
+    image: traefik:v2.11
+    container_name: traefik_coraza
+    restart: always
+    command:
+      - "--log.level=DEBUG"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--api.dashboard=true"
+    ports:
+      - "80:80"     # HTTP
+      - "8080:8080" # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal_net
+      - proxy_net
+
+  wafsec:
+    image: wafsec:local
+    container_name: wafsec_coraza
+    restart: always
+    depends_on:
+      - traefik
+    volumes:
+      - ./modsecurity/logs/:/tmp/
+    ports:
+      - "8081:8081"
+    environment:
+      BACKENDS: |
+        {
+          "waf.test.local": ["web:80"],
+          "api.test.local": ["api:8082"],
+          "default": ["web:80"]
+        }
+      CORAZA_RULES_PATH_APIS: >
+        /app/profiles/coraza-recommended.conf:
+        /app/profiles/pl2-crs-setup.conf:
+        /app/coreruleset/rules/REQUEST-901-INITIALIZATION.conf:
+        /app/coreruleset/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf:
+        /app/coreruleset/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf:
+        /app/coreruleset/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf:
+        /app/coreruleset/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf:
+        /app/coreruleset/rules/REQUEST-949-BLOCKING-EVALUATION.conf
+      CORAZA_RULES_PATH_SITES: >
+        /app/profiles/coraza-recommended.conf:
+        /app/profiles/pl1-crs-setup.conf:
+        /app/coreruleset/rules/*.conf:
+      WAF_APIS_HOSTS: "api.test.local"
+      WAF_WEB_HOSTS: "waf.test.local"
+    labels:
+      - "traefik.enable=true"
+      # --- waf.test.local ---
+      - "traefik.http.routers.waf.rule=Host(`waf.test.local`)"
+      - "traefik.http.routers.waf.entrypoints=web"
+      - "traefik.http.routers.waf.service=waf-service"
+      # --- api.test.local ---
+      - "traefik.http.routers.api.rule=Host(`api.test.local`)"
+      - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.routers.api.service=waf-service"
+      - "traefik.http.services.waf-service.loadbalancer.server.port=8081"
+    networks:
+      - internal_net
+
+  api:
+    build: ./docker/api
+    container_name: api_coraza
+    depends_on:
+      - wafsec
+    networks:
+      - internal_net
+
+  web:
+    build: ./docker/web
+    container_name: web_coraza
+    depends_on:
+      - wafsec
+    networks:
+      - internal_net
+
+networks:
+  internal_net:
+    internal: true
+  proxy_net:
+    driver:
+      bridge
