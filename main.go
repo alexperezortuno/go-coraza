@@ -11,15 +11,69 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/corazawaf/coraza/v3"
 	ctypes "github.com/corazawaf/coraza/v3/types"
+	"golang.org/x/time/rate"
 )
 
 type Backend struct {
 	Addrs   []string
 	Counter uint64
+}
+
+// IPRateLimiter manage the rate limit for IP
+type IPRateLimiter struct {
+	ips map[string]*visitor
+	mu  sync.Mutex
+	r   rate.Limit
+	b   int
+}
+
+type visitor struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
+	i := &IPRateLimiter{
+		ips: make(map[string]*visitor),
+		r:   r,
+		b:   b,
+	}
+	go i.cleanupVisitors()
+	return i
+}
+
+func (i *IPRateLimiter) GetLimiter(ip string) *rate.Limiter {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	v, exists := i.ips[ip]
+	if !exists {
+		limiter := rate.NewLimiter(i.r, i.b)
+		i.ips[ip] = &visitor{limiter, time.Now()}
+		return limiter
+	}
+
+	v.lastSeen = time.Now()
+	return v.limiter
+}
+
+func (i *IPRateLimiter) cleanupVisitors() {
+	for {
+		time.Sleep(time.Minute)
+		i.mu.Lock()
+		for ip, v := range i.ips {
+			if time.Since(v.lastSeen) > 3*time.Minute {
+				delete(i.ips, ip)
+			}
+		}
+		i.mu.Unlock()
+	}
 }
 
 func loadBackendsFromEnv() (map[string]*Backend, error) {
@@ -139,21 +193,28 @@ func main() {
 	// Crear WAFs
 	wafSites, err := loadWAF(rulesSites)
 	if err != nil {
-		log.Fatalf("Error creando WAF sitios: %v", err)
+		log.Fatalf("Error creating WAF sites: %v", err)
 	}
 
 	wafApis, err := loadWAF(rulesAPIs)
 	if err != nil {
-		log.Fatalf("Error creando WAF APIs: %v", err)
+		log.Fatalf("Error creating WAF APIs: %v", err)
 	}
 
 	apisHosts := parseHosts("WAF_APIS_HOSTS")
 	webHosts := parseHosts("WAF_WEB_HOSTS")
 
-	log.Println("Coraza WAF iniciado")
+	limiter := NewIPRateLimiter(5, 10)
+
+	log.Println("Coraza WAF started")
 
 	// ------------------------ HANDLER ------------------------
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientIP, _ := splitHostPort(r.RemoteAddr)
+		if !limiter.GetLimiter(clientIP).Allow() {
+			http.Error(w, "Too Many Requests - Bot protection triggered", http.StatusTooManyRequests)
+			return
+		}
 
 		hostOnly := strings.Split(r.Host, ":")[0]
 		var waf coraza.WAF
