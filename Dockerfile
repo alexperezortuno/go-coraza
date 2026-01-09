@@ -12,12 +12,19 @@ RUN go build -o /coraza-proxy main.go
 
 FROM alpine:latest
 RUN apk add --no-cache ca-certificates
+
+RUN addgroup -S coraza && adduser -S coraza -G coraza
+
 WORKDIR /app
 
 COPY --from=builder /coraza-proxy /app/coraza-proxy
 COPY --from=builder /src/coreruleset /app/coreruleset
 COPY --from=builder /src/profiles /app/profiles
 
-RUN mkdir -p /var/log/coraza && touch /var/log/coraza/audit.log
+RUN mkdir -p /var/log/coraza && \
+    touch /var/log/coraza/audit.log && \
+    chown -R coraza:coraza /var/log/coraza
+
+USER coraza
 
 ENTRYPOINT ["/app/coraza-proxy"]
