@@ -164,7 +164,17 @@ func start() {
 		return
 	}
 
+	err = os.Chmod("/tmp/log/coraza/audit.log", 0644)
+	if err != nil {
+		return
+	}
+
 	_, err = os.Create("/tmp/log/coraza/debug.log")
+	if err != nil {
+		return
+	}
+
+	err = os.Chmod("/tmp/log/coraza/debug.log", 0644)
 	if err != nil {
 		return
 	}
