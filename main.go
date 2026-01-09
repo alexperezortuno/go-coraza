@@ -212,6 +212,7 @@ func main() {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clientIP, _ := splitHostPort(r.RemoteAddr)
 		if !limiter.GetLimiter(clientIP).Allow() {
+			log.Println("Too Many Requests - IP blocked", clientIP)
 			http.Error(w, "Too Many Requests - Bot protection triggered", http.StatusTooManyRequests)
 			return
 		}
