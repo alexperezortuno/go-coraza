@@ -24,8 +24,6 @@ services:
     restart: on-failure:5
     depends_on:
       - traefik
-    volumes:
-      - ./logs/:/tmp/log/coraza
     ports:
       - "8081:8081"
     environment:
