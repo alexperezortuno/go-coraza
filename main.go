@@ -154,27 +154,27 @@ func loadWAF(paths string) (coraza.WAF, error) {
 
 func start() {
 	// Create directories
-	err := os.MkdirAll("./log/coraza", 0755)
+	err := os.MkdirAll("/tmp/log/coraza", 0755)
 	if err != nil {
 		return
 	}
 	// Create empty files
-	_, err = os.Create("./log/coraza/audit.log")
+	_, err = os.Create("/tmp/log/coraza/audit.log")
 	if err != nil {
 		return
 	}
 
-	err = os.Chmod("./log/coraza/audit.log", 0644)
+	err = os.Chmod("/tmp/log/coraza/audit.log", 0644)
 	if err != nil {
 		return
 	}
 
-	_, err = os.Create("./log/coraza/debug.log")
+	_, err = os.Create("/tmp/log/coraza/debug.log")
 	if err != nil {
 		return
 	}
 
-	err = os.Chmod("./log/coraza/debug.log", 0644)
+	err = os.Chmod("/tmp/log/coraza/debug.log", 0644)
 	if err != nil {
 		return
 	}

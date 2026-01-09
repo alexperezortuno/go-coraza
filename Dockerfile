@@ -21,9 +21,9 @@ COPY --from=builder /coraza-proxy /app/coraza-proxy
 COPY --from=builder /src/coreruleset /app/coreruleset
 COPY --from=builder /src/profiles /app/profiles
 
-RUN mkdir -p /app/log/coraza && \
-    touch /app/log/coraza/audit.log && \
-    chown -R coraza:coraza /app/log/coraza
+RUN mkdir -p /tmp/log/coraza && \
+    touch /tmp/log/coraza/audit.log && \
+    chown -R coraza:coraza /tmp/log/coraza
 
 USER coraza
 
