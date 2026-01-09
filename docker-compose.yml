@@ -4,7 +4,7 @@ services:
     container_name: wafsec
     restart: always
     volumes:
-      - ./modsecurity/logs/:/tmp/
+      - ./modsecurity/logs/:/var/log/coraza
     ports:
       - "8081:8081"
     environment:
