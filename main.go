@@ -17,6 +17,7 @@ import (
 
 	"github.com/corazawaf/coraza/v3"
 	ctypes "github.com/corazawaf/coraza/v3/types"
+	"github.com/oschwald/geoip2-golang"
 	"golang.org/x/time/rate"
 )
 
@@ -37,6 +38,12 @@ type visitor struct {
 	limiter  *rate.Limiter
 	lastSeen time.Time
 }
+
+var geoDB *geoip2.Reader
+var geoBlockEnabled bool
+var blockBots bool
+var geoAllow map[string]struct{}
+var geoBlock map[string]struct{}
 
 // NewIPRateLimiter creates and initializes a new IPRateLimiter with the specified rate limit and burst size.
 func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
@@ -180,6 +187,13 @@ func getEnvInt(key string, d int) int {
 	return d
 }
 
+func getEnvBool(key string, d bool) bool {
+	if value, err := strconv.ParseBool(getEnvString(key, "")); err == nil {
+		return value
+	}
+	return d
+}
+
 // realClientIP extracts the client's real IP address from HTTP headers or the remote address.
 // It checks headers "CF-Connecting-IP" and "X-Forwarded-For" for proxy configurations.
 func realClientIP(r *http.Request) string {
@@ -193,6 +207,59 @@ func realClientIP(r *http.Request) string {
 	}
 	host, _ := splitHostPort(r.RemoteAddr)
 	return host
+}
+
+func loadGeoIP(path string) {
+	var err error
+	geoDB, err = geoip2.Open(path)
+	if err != nil {
+		log.Fatalf("GeoIP DB error: %v", err)
+	}
+	log.Println("GeoIP database loaded")
+}
+
+func getCountryCode(ipStr string) (string, error) {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return "", fmt.Errorf("invalid IP")
+	}
+	record, err := geoDB.Country(ip)
+	if err != nil {
+		return "", err
+	}
+	return record.Country.IsoCode, nil
+}
+
+func parseCSVSet(env string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, c := range strings.Split(env, ",") {
+		c = strings.TrimSpace(strings.ToUpper(c))
+		if c != "" {
+			out[c] = struct{}{}
+		}
+	}
+	return out
+}
+
+func geoFilter(r *http.Request, allow, block map[string]struct{}) (bool, string) {
+	ip, _ := splitHostPort(r.RemoteAddr)
+
+	country, err := getCountryCode(ip)
+	if err != nil {
+		return false, "geo lookup failed"
+	}
+
+	if _, blocked := block[country]; blocked {
+		return false, "geo blocked"
+	}
+
+	if len(allow) > 0 {
+		if _, ok := allow[country]; !ok {
+			return false, "geo not allowed"
+		}
+	}
+
+	return true, country
 }
 
 func start() {
@@ -221,6 +288,13 @@ func start() {
 	if err != nil {
 		return
 	}
+
+	geoBlockEnabled = getEnvBool("GEO_BLOCK_ENABLED", false)
+	if geoBlockEnabled {
+		loadGeoIP("/app/GeoLite2-Country.mmdb")
+	}
+
+	blockBots = getEnvBool("WAF_BLOCK_BOTS", false)
 }
 
 func main() {
@@ -254,24 +328,51 @@ func main() {
 		log.Fatalf("Error creating WAF APIs: %v", err)
 	}
 
-	apisHosts := parseHosts("WAF_APIS_HOSTS")
-	webHosts := parseHosts("WAF_WEB_HOSTS")
+	apisHosts := parseHosts("PROXY_APIS_HOSTS")
+	webHosts := parseHosts("PROXY_WEB_HOSTS")
 
 	limiter := NewIPRateLimiter(
-		rate.Limit(getEnvInt("WAF_RATE_LIMIT", 5)),
-		getEnvInt("WAF_RATE_BURST", 10),
+		rate.Limit(getEnvInt("PROXY_RATE_LIMIT", 5)),
+		getEnvInt("PROXY_RATE_BURST", 10),
 	)
+
+	if geoBlockEnabled {
+		geoAllow = parseCSVSet(os.Getenv("GEO_ALLOW_COUNTRIES"))
+		geoBlock = parseCSVSet(os.Getenv("GEO_BLOCK_COUNTRIES"))
+	}
 
 	log.Println("Coraza WAF started")
 
 	// ------------------------ HANDLER ------------------------
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if geoBlockEnabled {
+			allowed, country := geoFilter(r, geoAllow, geoBlock)
+			if !allowed {
+				log.Printf("[GEO] blocked %s from %s", r.RemoteAddr, country)
+				http.Error(w, "Access denied by GeoIP policy", http.StatusForbidden)
+				return
+			}
+		}
+
 		clientIP := realClientIP(r)
 
 		if !limiter.GetLimiter(clientIP).Allow() {
 			log.Println("Too Many Requests - IP blocked", clientIP)
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return
+		}
+
+		if blockBots {
+			ua := strings.ToLower(r.UserAgent())
+			envBots := getEnvString("WAF_BOTS", "python,googlebot,bingbot,yandex,baiduspider")
+			badBots := strings.Split(envBots, ",")
+			for _, bot := range badBots {
+				if strings.Contains(ua, bot) {
+					log.Println("Bot blocked", clientIP)
+					http.Error(w, "Bot blocked", http.StatusForbidden)
+					return
+				}
+			}
 		}
 
 		hostOnly := strings.Split(r.Host, ":")[0]
