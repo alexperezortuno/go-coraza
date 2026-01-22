@@ -180,6 +180,21 @@ func getEnvInt(key string, d int) int {
 	return d
 }
 
+// realClientIP extracts the client's real IP address from HTTP headers or the remote address.
+// It checks headers "CF-Connecting-IP" and "X-Forwarded-For" for proxy configurations.
+func realClientIP(r *http.Request) string {
+	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
+		return cf
+	}
+	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
+		// primer IP del XFF
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	host, _ := splitHostPort(r.RemoteAddr)
+	return host
+}
+
 func start() {
 	// Create directories
 	err := os.MkdirAll("/tmp/log/coraza", 0755)
@@ -251,10 +266,11 @@ func main() {
 
 	// ------------------------ HANDLER ------------------------
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientIP, _ := splitHostPort(r.RemoteAddr)
+		clientIP := realClientIP(r)
+
 		if !limiter.GetLimiter(clientIP).Allow() {
 			log.Println("Too Many Requests - IP blocked", clientIP)
-			http.Error(w, "Too Many Requests - Bot protection triggered", http.StatusTooManyRequests)
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return
 		}
 
@@ -279,7 +295,7 @@ func main() {
 		}(tx)
 
 		// Connection
-		clientIP, clientPort := splitHostPort(r.RemoteAddr)
+		_, clientPort := splitHostPort(r.RemoteAddr)
 		serverIP, serverPort := splitHostPort(r.Host)
 		tx.ProcessConnection(clientIP, clientPort, serverIP, serverPort)
 
@@ -294,44 +310,41 @@ func main() {
 		if it := tx.ProcessRequestHeaders(); it != nil {
 			if block, status := shouldBlock(it); block {
 				w.WriteHeader(status)
-				_, err := w.Write([]byte("Request blocked by WAF (headers)"))
-				if err != nil {
-					log.Println("Error writing response:", err)
-					return
-				}
+				_, _ = w.Write([]byte("Request blocked by WAF (headers)"))
+				log.Println("Request blocked by WAF (headers)")
 				return
 			}
 		}
 
 		// Body
-		if r.Body != nil {
+		if r.Body != nil && (r.ContentLength > 0 || r.Header.Get("Transfer-Encoding") != "") {
 			body, err := io.ReadAll(r.Body)
+			_ = r.Body.Close()
 			if err != nil {
-				http.Error(w, "Error reading body", 400)
-				return
-			}
-			err = r.Body.Close()
-			if err != nil {
-				return
-			}
-
-			_, _, err = tx.WriteRequestBody(body)
-			if err != nil {
-				http.Error(w, "Error processing body", 400)
+				log.Println("Error reading body:", err)
+				http.Error(w, "Error reading body", http.StatusBadRequest)
 				return
 			}
 
-			if it, _ := tx.ProcessRequestBody(); it != nil {
-				w.WriteHeader(it.Status)
-				_, err := w.Write([]byte("Request blocked by WAF (body)"))
+			if len(body) > 0 {
+				_, _, err = tx.WriteRequestBody(body)
 				if err != nil {
+					log.Println("Error processing body:", err)
+					http.Error(w, "Error processing body", http.StatusBadRequest)
 					return
 				}
-				return
-			}
 
-			r.Body = io.NopCloser(bytes.NewBuffer(body))
-			r.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+				if it, _ := tx.ProcessRequestBody(); it != nil {
+					w.WriteHeader(it.Status)
+					_, _ = w.Write([]byte("Request blocked by WAF (body)"))
+					log.Println("Request blocked by WAF (body)")
+					return
+				}
+
+				r.Body = io.NopCloser(bytes.NewReader(body))
+				r.ContentLength = int64(len(body))
+				r.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+			}
 		}
 
 		// Backend
