@@ -40,8 +40,10 @@ type visitor struct {
 }
 
 var geoDB *geoip2.Reader
+
 var geoBlockEnabled bool
 var blockBots bool
+var verifyIPReputation bool
 var geoAllow map[string]struct{}
 var geoBlock map[string]struct{}
 
@@ -345,6 +347,12 @@ func main() {
 
 	// ------------------------ HANDLER ------------------------
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientIP := realClientIP(r)
+
+		if verifyIPReputation {
+			log.Printf("[REPUTATION] checking %s", clientIP)
+		}
+
 		if geoBlockEnabled {
 			allowed, country := geoFilter(r, geoAllow, geoBlock)
 			if !allowed {
@@ -353,8 +361,6 @@ func main() {
 				return
 			}
 		}
-
-		clientIP := realClientIP(r)
 
 		if !limiter.GetLimiter(clientIP).Allow() {
 			log.Println("Too Many Requests - IP blocked", clientIP)
