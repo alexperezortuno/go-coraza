@@ -294,7 +294,7 @@ func start() {
 		loadGeoIP("/app/GeoLite2-Country.mmdb")
 	}
 
-	blockBots = getEnvBool("WAF_BLOCK_BOTS", false)
+	blockBots = getEnvBool("PROXY_BLOCK_BOTS", false)
 }
 
 func main() {
@@ -364,7 +364,7 @@ func main() {
 
 		if blockBots {
 			ua := strings.ToLower(r.UserAgent())
-			envBots := getEnvString("WAF_BOTS", "python,googlebot,bingbot,yandex,baiduspider")
+			envBots := getEnvString("PROXY_BOTS", "python,googlebot,bingbot,yandex,baiduspider")
 			badBots := strings.Split(envBots, ",")
 			for _, bot := range badBots {
 				if strings.Contains(ua, bot) {
