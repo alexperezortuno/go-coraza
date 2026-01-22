@@ -143,3 +143,18 @@ curl -v -X POST "http://waf.test.local:8081" \
 curl -v -X POST "http://waf.test.local:8081" \
   -H "X-Api-Version: <script>" "http://waf.test.local:8081"
 ```
+
+### Test rate limiting
+
+```bash
+for i in {1..25}; do 
+  curl -i -s "http://localhost:8081/" -H "Host: waf.test.local" | grep "HTTP/1.1"; 
+done
+```
+
+```bash
+for i in {1..25}; do 
+  curl -i -s "http://localhost:8081/" -H "Host: waf.test.local" | grep "HTTP/1.1"; 
+  sleep 1;
+done
+```

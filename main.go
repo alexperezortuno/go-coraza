@@ -38,6 +38,7 @@ type visitor struct {
 	lastSeen time.Time
 }
 
+// NewIPRateLimiter creates and initializes a new IPRateLimiter with the specified rate limit and burst size.
 func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
 	i := &IPRateLimiter{
 		ips: make(map[string]*visitor),
@@ -48,6 +49,8 @@ func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
 	return i
 }
 
+// GetLimiter returns a rate limiter for the specified IP address, creating a new one if it does not exist,
+// and updates its last seen time.
 func (i *IPRateLimiter) GetLimiter(ip string) *rate.Limiter {
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -63,6 +66,7 @@ func (i *IPRateLimiter) GetLimiter(ip string) *rate.Limiter {
 	return v.limiter
 }
 
+// cleanupVisitors removes inactive visitors from the IP map based on the configured inactivity duration.
 func (i *IPRateLimiter) cleanupVisitors() {
 	for {
 		time.Sleep(time.Minute)
@@ -76,6 +80,7 @@ func (i *IPRateLimiter) cleanupVisitors() {
 	}
 }
 
+// loadBackendsFromEnv loads backend configurations from the "BACKENDS" environment variable or assigns a default backend.
 func loadBackendsFromEnv() (map[string]*Backend, error) {
 	raw := os.Getenv("BACKENDS")
 	if strings.TrimSpace(raw) == "" {
@@ -96,6 +101,9 @@ func loadBackendsFromEnv() (map[string]*Backend, error) {
 	return result, nil
 }
 
+// shouldBlock determines if a request should be blocked based on the given interruption's status code.
+// If the interruption is nil or the status code is less than 400, it returns false with status 0.
+// Otherwise, it returns true with the provided status code.
 func shouldBlock(it *ctypes.Interruption) (bool, int) {
 	if it == nil {
 		return false, 0
@@ -106,6 +114,7 @@ func shouldBlock(it *ctypes.Interruption) (bool, int) {
 	return true, it.Status
 }
 
+// getPort retrieves the port number from the "PORT" environment variable or defaults to "8081" if not set or invalid.
 func getPort() string {
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -118,6 +127,7 @@ func getPort() string {
 	return port
 }
 
+// splitHostPort extracts the host and port from a network address string. Defaults to port 80 if not specified.
 func splitHostPort(addr string) (string, int) {
 	host, portStr, err := net.SplitHostPort(addr)
 	if err == nil {
@@ -129,6 +139,7 @@ func splitHostPort(addr string) (string, int) {
 	return addr, 80
 }
 
+// parseHosts retrieves a comma-separated list of hosts from the specified environment variable and returns them as a map.
 func parseHosts(envVar string) map[string]struct{} {
 	raw := os.Getenv(envVar)
 	result := make(map[string]struct{})
@@ -141,6 +152,7 @@ func parseHosts(envVar string) map[string]struct{} {
 	return result
 }
 
+// loadWAF loads a Web Application Firewall (WAF) configuration from a colon-separated list of file paths.
 func loadWAF(paths string) (coraza.WAF, error) {
 	cfg := coraza.NewWAFConfig()
 	for _, f := range strings.Split(paths, ":") {
@@ -150,6 +162,22 @@ func loadWAF(paths string) (coraza.WAF, error) {
 		}
 	}
 	return coraza.NewWAF(cfg)
+}
+
+// getEnvString returns the value of the specified environment variable or an empty string if it is not set.
+func getEnvString(key string, d string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return d
+}
+
+// getEnvInt returns the value of the specified environment variable as an integer or 0 if it is not set or invalid.
+func getEnvInt(key string, d int) int {
+	if value, err := strconv.Atoi(getEnvString(key, "")); err == nil {
+		return value
+	}
+	return d
 }
 
 func start() {
@@ -182,25 +210,25 @@ func start() {
 
 func main() {
 	start()
-	// ------------ REGLAS PARA SITIOS (PL1) ------------
+	// ------------ RULES FOR SITES (PL1) ------------
 	rulesSites := os.Getenv("CORAZA_RULES_PATH_SITES")
 	if rulesSites == "" {
 		rulesSites = "/app/coraza.conf:/app/coreruleset/pl1-crs-setup.conf:/app/coreruleset/rules/*.conf"
 	}
 
-	// ------------ REGLAS PARA APIS (PL2) ------------
+	// ------------ RULES FOR SITES (PL2) ------------
 	rulesAPIs := os.Getenv("CORAZA_RULES_PATH_APIS")
 	if rulesAPIs == "" {
 		rulesAPIs = "/app/coraza.conf:/app/coreruleset/pl2-crs-setup.conf:/app/coreruleset/rules/REQUEST-901-INITIALIZATION.conf:/app/coreruleset/rules/*.conf"
 	}
 
-	// Cargar backends
+	// Load backends
 	backends, err := loadBackendsFromEnv()
 	if err != nil {
 		log.Fatalf("Error parsing BACKENDS: %v", err)
 	}
 
-	// Crear WAFs
+	// Load WAFs
 	wafSites, err := loadWAF(rulesSites)
 	if err != nil {
 		log.Fatalf("Error creating WAF sites: %v", err)
@@ -214,7 +242,10 @@ func main() {
 	apisHosts := parseHosts("WAF_APIS_HOSTS")
 	webHosts := parseHosts("WAF_WEB_HOSTS")
 
-	limiter := NewIPRateLimiter(5, 10)
+	limiter := NewIPRateLimiter(
+		rate.Limit(getEnvInt("WAF_RATE_LIMIT", 5)),
+		getEnvInt("WAF_RATE_BURST", 10),
+	)
 
 	log.Println("Coraza WAF started")
 

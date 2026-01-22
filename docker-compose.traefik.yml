@@ -58,6 +58,8 @@ services:
         /app/coreruleset/rules/RESPONSE-955-WEB-SHELLS.conf
       WAF_APIS_HOSTS: "api.test.local"
       WAF_WEB_HOSTS: "waf.test.local"
+      WAF_RATE_LIMIT: 5
+      WAF_RATE_BURST: 5
     labels:
       - "traefik.enable=true"
       # --- waf.test.local ---
