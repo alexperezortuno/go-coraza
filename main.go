@@ -39,6 +39,11 @@ type visitor struct {
 	lastSeen time.Time
 }
 
+type HostBackend struct {
+	Default *Backend
+	Paths   map[string]*Backend // clave = prefijo, ej "/static"
+}
+
 var geoDB *geoip2.Reader
 
 var geoBlockEnabled bool
@@ -90,24 +95,69 @@ func (i *IPRateLimiter) cleanupVisitors() {
 }
 
 // loadBackendsFromEnv loads backend configurations from the "BACKENDS" environment variable or assigns a default backend.
-func loadBackendsFromEnv() (map[string]*Backend, error) {
+func loadBackendsFromEnv() (map[string]*HostBackend, error) {
 	raw := os.Getenv("BACKENDS")
 	if strings.TrimSpace(raw) == "" {
-		return map[string]*Backend{
-			"default": {Addrs: []string{"localhost:5000"}},
+		return map[string]*HostBackend{
+			"default": {
+				Default: &Backend{Addrs: []string{"localhost:5000"}},
+				Paths:   map[string]*Backend{},
+			},
 		}, nil
 	}
 
-	var parsed map[string][]string
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+	// 1) New format (recommended):
+	// {
+	//   "example.com": { "default": ["web:80"], "paths": { "/static": ["static:80"] } }
+	// }
+	type hostCfg struct {
+		Default []string            `json:"default"`
+		Paths   map[string][]string `json:"paths"`
+	}
+	var parsedV2 map[string]hostCfg
+	if err := json.Unmarshal([]byte(raw), &parsedV2); err == nil && len(parsedV2) > 0 {
+		out := make(map[string]*HostBackend, len(parsedV2))
+		for host, cfg := range parsedV2 {
+			hb := &HostBackend{
+				Default: &Backend{Addrs: cfg.Default},
+				Paths:   map[string]*Backend{},
+			}
+			for pfx, addrs := range cfg.Paths {
+				pfx = strings.TrimSpace(pfx)
+				if pfx == "" {
+					continue
+				}
+				hb.Paths[pfx] = &Backend{Addrs: addrs}
+			}
+			// Si no definieron "default", intenta ser tolerante: usa el primero de paths si existe
+			if len(hb.Default.Addrs) == 0 {
+				for _, b := range hb.Paths {
+					if len(b.Addrs) > 0 {
+						hb.Default = b
+						break
+					}
+				}
+			}
+			out[host] = hb
+		}
+		return out, nil
+	}
+
+	// 2) old format (compatibility):
+	// { "example.com": ["web:80"], "default": ["web:80"] }
+	var parsedV1 map[string][]string
+	if err := json.Unmarshal([]byte(raw), &parsedV1); err != nil {
 		return nil, err
 	}
 
-	result := make(map[string]*Backend, len(parsed))
-	for host, addrs := range parsed {
-		result[host] = &Backend{Addrs: addrs}
+	out := make(map[string]*HostBackend, len(parsedV1))
+	for host, addrs := range parsedV1 {
+		out[host] = &HostBackend{
+			Default: &Backend{Addrs: addrs},
+			Paths:   map[string]*Backend{},
+		}
 	}
-	return result, nil
+	return out, nil
 }
 
 // shouldBlock determines if a request should be blocked based on the given interruption's status code.
@@ -262,6 +312,32 @@ func geoFilter(r *http.Request, allow, block map[string]struct{}) (bool, string)
 	}
 
 	return true, country
+}
+
+func pickBackendForRequest(hostCfg *HostBackend, path string) *Backend {
+	if hostCfg == nil {
+		return nil
+	}
+
+	// Match de prefijo más largo (importante si tienes /static y /static/img)
+	var (
+		bestLen int
+		best    *Backend
+	)
+	for pfx, be := range hostCfg.Paths {
+		if strings.HasPrefix(path, pfx) && len(pfx) > bestLen {
+			bestLen = len(pfx)
+			best = be
+		}
+	}
+	if best != nil && len(best.Addrs) > 0 {
+		return best
+	}
+
+	if hostCfg.Default != nil && len(hostCfg.Default.Addrs) > 0 {
+		return hostCfg.Default
+	}
+	return nil
 }
 
 func start() {
@@ -462,10 +538,17 @@ func main() {
 		}
 
 		// Backend
-		be, ok := backends[hostOnly]
+		hostCfg, ok := backends[hostOnly]
 		if !ok {
-			be = backends["default"]
+			hostCfg = backends["default"]
 		}
+
+		be := pickBackendForRequest(hostCfg, r.URL.Path)
+		if be == nil || len(be.Addrs) == 0 {
+			http.Error(w, "Bad Gateway: backend not configured", http.StatusBadGateway)
+			return
+		}
+
 		idx := int((atomic.AddUint64(&be.Counter, 1) - 1) % uint64(len(be.Addrs)))
 		target := be.Addrs[idx]
 
