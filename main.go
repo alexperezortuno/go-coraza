@@ -381,6 +381,7 @@ func main() {
 			}
 		}
 
+		log.Println("Processing request for", r.Host)
 		hostOnly := strings.Split(r.Host, ":")[0]
 		var waf coraza.WAF
 
