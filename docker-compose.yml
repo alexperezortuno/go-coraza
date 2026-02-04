@@ -37,8 +37,8 @@ services:
         /app/coreruleset/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf:
         /app/coreruleset/rules/REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf:
         /app/coreruleset/rules/RESPONSE-955-WEB-SHELLS.conf
-      WAF_APIS_HOSTS: "api.test.local"
-      WAF_WEB_HOSTS: "waf.test.local"
+      PROXY_APIS_HOSTS: "api.test.local"
+      PROXY_WEB_HOSTS: "waf.test.local"
     networks:
       - coraza
   api:
