@@ -392,6 +392,12 @@ func main() {
 			waf = wafSites
 		}
 
+		if waf == nil {
+			log.Println("WAF not configured for host:", hostOnly)
+			http.Error(w, "WAF not configured for this host", http.StatusInternalServerError)
+			return
+		}
+
 		tx := waf.NewTransaction()
 		defer tx.ProcessLogging()
 		defer func(tx ctypes.Transaction) {
