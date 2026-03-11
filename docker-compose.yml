@@ -3,8 +3,6 @@ services:
     image: wafsec:local
     container_name: wafsec
     restart: always
-    volumes:
-      - ./logs/:/tmp/log/coraza
     ports:
       - "8081:8081"
     environment:
@@ -39,6 +37,8 @@ services:
         /app/coreruleset/rules/RESPONSE-955-WEB-SHELLS.conf
       PROXY_APIS_HOSTS: "api.test.local"
       PROXY_WEB_HOSTS: "waf.test.local"
+      PROXY_RATE_LIMIT: 5
+      PROXY_RATE_BURST: 10
     networks:
       - coraza
   api:
